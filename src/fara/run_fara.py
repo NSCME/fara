@@ -1,7 +1,7 @@
 import asyncio
 import argparse
 import os
-from .fara_agent import FaraAgent
+from .hyper_agent import HyperNestedFaraAgent as FaraAgent
 from .browser.browser_bb import BrowserBB
 import logging
 from typing import Dict
