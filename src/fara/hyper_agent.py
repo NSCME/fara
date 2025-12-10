@@ -1,14 +1,26 @@
-# src/fara/hyper_agent.py
+
 from typing import List, Tuple, Dict, Any
 from .fara_agent import FaraAgent
 from .hdc_brain import HyperNestedBrain
 from .fara_types import UserMessage, ImageObj, FunctionCall
 
 class HyperNestedFaraAgent(FaraAgent):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, model_path: str, *args, **kwargs):
+        """
+        Initialize the HyperNested Agent.
+        
+        Args:
+            model_path: The local path or HuggingFace ID for the model weights 
+                        (e.g., "Qwen/Qwen2-VL-7B-Instruct"). This is passed to 
+                        the brain to align vision/text encoders.
+            *args: Arguments passed to the base FaraAgent.
+            **kwargs: Keyword arguments passed to the base FaraAgent.
+        """
         super().__init__(*args, **kwargs)
-        # Initialize the HyperNested Brain
-        self.brain = HyperNestedBrain() 
+        
+        # Initialize the HyperNested Brain with the shared model path
+        # This ensures the "Memory" sees the world exactly as the "Agent" does.
+        self.brain = HyperNestedBrain(model_path=model_path) 
         self.last_screenshot = None
 
     async def generate_model_call(
@@ -29,7 +41,9 @@ class HyperNestedFaraAgent(FaraAgent):
         if memory_hint:
             print(f"\n[HYPERNESTED] Brain Injection: {memory_hint}")
             # Inject the memory as a "User Message" so Fara sees it as instruction
-            # We append it to the chat history temporarily
+            # We append it to the chat history temporarily. 
+            # Fara's logic handles history management, so this effectively "stuffs" 
+            # the retrieved context into the immediate prompt.
             injection_msg = UserMessage(
                 content=[f"SYSTEM NOTE: {memory_hint}"]
             )
@@ -46,16 +60,16 @@ class HyperNestedFaraAgent(FaraAgent):
         is_stop, new_screenshot, action_desc = await super().execute_action(function_call)
         
         # 2. INSTANT LEARNING (Delta Update)
-        # We categorize the outcome based on simple heuristics (or VLM check)
-        # For now, we assume if action didn't crash, it's neutral/good. 
-        # Ideally, we check if URL changed or if error appeared.
+        # We categorize the outcome based on simple heuristics.
+        # Ideally, we would check if the URL changed or if an error message appeared on screen.
         outcome = "success" 
         
-        # If the action description implies failure (e.g. "I waited" loop), mark as fail
+        # Heuristic: If the model enters a "waiting" loop, mark it as a failure
         if "waiting" in action_desc and self._num_actions > 10:
              outcome = "failure"
 
         # Teach the brain
+        # This creates the semantic binding: (Visual State * Text Action * Outcome)
         if self.last_screenshot:
             self.brain.learn(self.last_screenshot, action_desc, outcome)
             print(f"[HYPERNESTED] Consolidated memory to Delta Layer. Outcome: {outcome}")
